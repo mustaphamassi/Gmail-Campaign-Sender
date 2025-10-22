@@ -8,40 +8,55 @@ interface SendStepProps {
   body: string;
   recipients: Recipient[];
   onComplete: (result: SendResult) => void;
+  userEmail: string;
+  accessToken: string;
 }
 
-const SendStep: React.FC<SendStepProps> = ({ subject, body, recipients, onComplete }) => {
+const SendStep: React.FC<SendStepProps> = ({ subject, body, recipients, onComplete, userEmail, accessToken }) => {
   const [isSending, setIsSending] = useState(false);
   const [sentCount, setSentCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
+  const [currentRecipient, setCurrentRecipient] = useState('');
 
   useEffect(() => {
     if (!isSending) return;
 
-    const totalRecipients = recipients.length;
-    if (totalRecipients === 0) {
-        onComplete({ success: 0, failed: 0 });
-        return;
-    }
-    
-    // Simulate sending emails
-    const interval = setInterval(() => {
-      setSentCount(prevCount => {
-        const newCount = prevCount + 1;
-        if (newCount >= totalRecipients) {
-          clearInterval(interval);
-          // Simulate some failures
-          const failedCount = Math.floor(Math.random() * (Math.min(5, totalRecipients)));
-          onComplete({ success: totalRecipients - failedCount, failed: failedCount });
+    const sendAllEmails = async () => {
+      for (const recipient of recipients) {
+        setCurrentRecipient(recipient.email);
+        const personalizedBody = getPersonalizedBody(recipient);
+        try {
+          const response = await fetch('/.netlify/functions/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: recipient.email,
+              from: userEmail,
+              subject,
+              body: personalizedBody,
+              accessToken,
+            }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to send email to ${recipient.email}`);
+          }
+          setSentCount(prev => prev + 1);
+
+        } catch (error) {
+          console.error(error);
+          setFailedCount(prev => prev + 1);
         }
-        return newCount;
-      });
-    }, 100); // Adjust speed of simulation
+      }
+      onComplete({ success: sentCount, failed: failedCount });
+    };
 
-    return () => clearInterval(interval);
+    sendAllEmails();
+    // We only want this to run once when isSending becomes true.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSending, recipients.length]);
+  }, [isSending]);
 
-  const progressPercentage = recipients.length > 0 ? (sentCount / recipients.length) * 100 : 0;
+  const progressPercentage = recipients.length > 0 ? ((sentCount + failedCount) / recipients.length) * 100 : 0;
 
   const getPersonalizedBody = (recipient: Recipient) => {
     return body.replace(/{name}/g, recipient.name || 'there');
@@ -74,7 +89,8 @@ const SendStep: React.FC<SendStepProps> = ({ subject, body, recipients, onComple
           <div className="flex justify-end">
             <button
               onClick={() => setIsSending(true)}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-300"
+              disabled={recipients.length === 0}
+              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-300 disabled:bg-slate-400 disabled:cursor-not-allowed"
             >
               Send Now
             </button>
@@ -83,14 +99,17 @@ const SendStep: React.FC<SendStepProps> = ({ subject, body, recipients, onComple
       ) : (
         <div className="flex flex-col items-center justify-center space-y-4 py-8">
             <h3 className="text-lg font-semibold">Sending Campaign...</h3>
-            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4">
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
               <div
-                className="bg-blue-600 h-4 rounded-full transition-all duration-100"
+                className="bg-blue-600 h-4 rounded-full transition-width duration-100"
                 style={{ width: `${progressPercentage}%` }}
               ></div>
             </div>
-            <p className="text-slate-500 dark:text-slate-400">
-              Sent {sentCount} of {recipients.length} emails
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Sent {sentCount} | Failed {failedCount} | Total {recipients.length}
+            </p>
+            <p className="text-slate-500 dark:text-slate-400 text-xs h-4">
+                {currentRecipient && `Processing: ${currentRecipient}`}
             </p>
         </div>
       )}
@@ -99,4 +118,3 @@ const SendStep: React.FC<SendStepProps> = ({ subject, body, recipients, onComple
 };
 
 export default SendStep;
-

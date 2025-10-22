@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Recipient, Campaign, SendResult, Template } from './types';
+import { Recipient, Campaign, SendResult, Template, GoogleProfile } from './types';
+import { GoogleOAuthProvider, useGoogleLogin, googleLogout } from '@react-oauth/google';
 
 import Header from './components/Header';
 import LandingStep from './components/LandingStep';
@@ -9,12 +10,12 @@ import CompleteStep from './components/CompleteStep';
 import ProfileStep from './components/ProfileStep';
 import TemplatesStep from './components/TemplatesStep';
 
-
 type AppStep = 'landing' | 'profile' | 'compose' | 'send' | 'complete' | 'templates';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>('landing');
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<GoogleProfile | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // Campaign state
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -26,33 +27,52 @@ const App: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
 
   useEffect(() => {
-    // Simulate checking for a logged-in user
-    const loggedInUser = sessionStorage.getItem('userEmail');
-    if (loggedInUser) {
-      setUserEmail(loggedInUser);
+    // Check for logged-in user in session storage
+    const storedProfile = sessionStorage.getItem('userProfile');
+    const storedToken = sessionStorage.getItem('accessToken');
+    if (storedProfile && storedToken) {
+      setUserProfile(JSON.parse(storedProfile));
+      setAccessToken(storedToken);
       setCurrentStep('profile');
-    } else {
-      setCurrentStep('landing');
     }
-     // Load campaigns from local storage
+
+    // Load campaigns from local storage
     const savedCampaigns = localStorage.getItem('campaigns');
     if (savedCampaigns) {
-      // Dates need to be re-hydrated
-      setCampaigns(JSON.parse(savedCampaigns).map((c: any) => ({...c, sentAt: new Date(c.sentAt)})));
+      setCampaigns(JSON.parse(savedCampaigns).map((c: any) => ({ ...c, sentAt: new Date(c.sentAt) })));
     }
   }, []);
 
-  const handleConnect = () => {
-    // Simulate login
-    const email = 'demo@example.com';
-    setUserEmail(email);
-    sessionStorage.setItem('userEmail', email);
-    setCurrentStep('compose');
-  };
-  
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setAccessToken(tokenResponse.access_token);
+      sessionStorage.setItem('accessToken', tokenResponse.access_token);
+      
+      // Fetch user profile
+      try {
+        const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` },
+        });
+        if (!profileResponse.ok) throw new Error('Failed to fetch profile');
+        const profile: GoogleProfile = await profileResponse.json();
+        setUserProfile(profile);
+        sessionStorage.setItem('userProfile', JSON.stringify(profile));
+        setCurrentStep('compose');
+      } catch (error) {
+        console.error('Profile fetch error:', error);
+        // Handle error - maybe logout
+      }
+    },
+    onError: errorResponse => console.error('Login Error:', errorResponse),
+    scope: 'https://www.googleapis.com/auth/gmail.send',
+  });
+
   const handleLogout = () => {
-    setUserEmail(null);
-    sessionStorage.removeItem('userEmail');
+    googleLogout();
+    setUserProfile(null);
+    setAccessToken(null);
+    sessionStorage.removeItem('userProfile');
+    sessionStorage.removeItem('accessToken');
     setCurrentStep('landing');
     resetCampaign();
   };
@@ -107,12 +127,15 @@ const App: React.FC = () => {
           />
         );
       case 'send':
+        if (!userProfile || !accessToken) return null; // Should not happen
         return (
           <SendStep
             recipients={recipients}
             subject={subject}
             body={body}
             onComplete={handleSendComplete}
+            userEmail={userProfile.email}
+            accessToken={accessToken}
           />
         );
       case 'complete':
@@ -124,7 +147,6 @@ const App: React.FC = () => {
           />
         );
       case 'landing':
-        // Landing step is handled outside this function for layout purposes
         return null;
       default:
         return null;
@@ -134,12 +156,12 @@ const App: React.FC = () => {
   return (
     <div className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 min-h-screen font-sans">
       <Header 
-        userEmail={userEmail} 
+        userProfile={userProfile} 
         onLogout={handleLogout} 
         onNavigateProfile={() => setCurrentStep('profile')}
       />
       {currentStep === 'landing' ? (
-        <LandingStep onConnect={handleConnect} />
+        <LandingStep onConnect={() => login()} />
       ) : (
         <main className="container mx-auto px-4 md:px-8 py-8">
           <div className="max-w-4xl mx-auto">
@@ -150,5 +172,67 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => {
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/.netlify/functions/get-config');
+        if (!response.ok) {
+          let errorMessage = `Could not load configuration. Server responded with status ${response.status}.`;
+          try {
+            const errorData = await response.json();
+            if (errorData && errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            // Ignore if the response body is not valid JSON
+          }
+          throw new Error(errorMessage);
+        }
+        const config = await response.json();
+        if (config.clientId) {
+          setGoogleClientId(config.clientId);
+        } else {
+          throw new Error('Client ID missing in configuration response.');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+        console.error(err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-red-50 text-red-800">
+        <div className="text-center p-8 max-w-lg">
+          <h1 className="text-2xl font-bold mb-2">Configuration Error</h1>
+          <p className="mb-4">{error}</p>
+          <p className="text-sm text-red-700">Please ensure the `REACT_APP_GOOGLE_CLIENT_ID` environment variable is correctly set in your Netlify project's deployment settings and that the deployment has been successfully rebuilt.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!googleClientId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <AppContent />
+    </GoogleOAuthProvider>
+  );
+};
+
 
 export default App;

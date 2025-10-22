@@ -1,17 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { GoogleProfile } from '../types';
 import { MailIcon } from './icons/MailIcon';
-import { UserIcon } from './icons/UserIcon';
 import { ChartBarIcon } from './icons/ChartBarIcon';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 
 interface HeaderProps {
-  userEmail: string | null;
+  userProfile: GoogleProfile | null;
   onLogout: () => void;
   onNavigateProfile: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ userEmail, onLogout, onNavigateProfile }) => {
+const Header: React.FC<HeaderProps> = ({ userProfile, onLogout, onNavigateProfile }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -36,16 +36,16 @@ const Header: React.FC<HeaderProps> = ({ userEmail, onLogout, onNavigateProfile 
             Gmail Campaign Sender
           </h1>
         </div>
-        {userEmail && (
+        {userProfile && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-full text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 pl-2 pr-3 py-1 rounded-full text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               aria-expanded={menuOpen}
               aria-haspopup="true"
             >
-              <UserIcon className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-              <span>{userEmail}</span>
+              <img src={userProfile.picture} alt="User profile" className="h-6 w-6 rounded-full" />
+              <span className="hidden sm:inline">{userProfile.name}</span>
               <ChevronDownIcon className={`h-4 w-4 text-slate-500 dark:text-slate-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
             </button>
             {menuOpen && (

@@ -1,7 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
-import type { Handler } from '@netlify/functions';
+// FIX: The `Handler` type from `@netlify/functions` expects a string body,
+// but this function returns a ReadableStream. To fix the resulting TypeScript
+// error, the `Handler` type is removed from the function signature and the `event`
+// parameter is explicitly typed with `HandlerEvent`. This allows TypeScript
+// to correctly infer the streaming response type, which the Netlify runtime supports.
+import type { HandlerEvent } from '@netlify/functions';
 
-const handler: Handler = async (event) => {
+const handler = async (event: HandlerEvent) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

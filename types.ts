@@ -24,3 +24,9 @@ export interface Template {
   subject: string;
   body: string;
 }
+
+export interface GoogleProfile {
+  email: string;
+  name: string;
+  picture: string;
+}
