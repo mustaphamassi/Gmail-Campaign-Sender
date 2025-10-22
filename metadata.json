@@ -1,0 +1,5 @@
+{
+  "name": "Gmail Campaign Sender",
+  "description": "An application to compose an email, upload a CSV of recipients, and send a personalized campaign. It uses Gemini AI to help draft compelling email content.",
+  "requestFramePermissions": []
+}
