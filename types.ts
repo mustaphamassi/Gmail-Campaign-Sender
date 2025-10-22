@@ -1,14 +1,7 @@
-export interface Recipient {
-  name: string;
-  email: string;
-}
 
-export enum AppStep {
-  AUTHENTICATE,
-  COMPOSE,
-  SEND,
-  COMPLETE,
-  PROFILE,
+export interface Recipient {
+  email: string;
+  name?: string;
 }
 
 export interface SendResult {
@@ -19,7 +12,15 @@ export interface SendResult {
 export interface Campaign {
   id: string;
   subject: string;
+  body: string;
   recipientsCount: number;
-  sentAt: Date;
   result: SendResult;
+  sentAt: Date;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
 }
